@@ -24,12 +24,13 @@ export const CATEGORIES = [
 export const JobStatus = {
   Open: 0,
   Funded: 1,
-  Delivered: 2,
-  Released: 3,
-  Refunded: 4,
-  Disputed: 5,
-  Resolved: 6,
-  Cancelled: 7,
+  Active: 2,
+  Delivered: 3,
+  Released: 4,
+  Refunded: 5,
+  Disputed: 6,
+  Awarded: 7,
+  Cancelled: 8,
 } as const
 
 export const PostKind = {
@@ -51,6 +52,7 @@ export interface Job {
   disputedAt: bigint
   durationDays: number
   revisions: number
+  feeBps: number
   status: number
   title: string
   category: string
@@ -75,14 +77,18 @@ export interface Post {
 
 export const STATUS_META: Record<number, { label: string; tone: 'blue' | 'amber' | 'green' | 'red' | 'grey' }> = {
   [JobStatus.Open]: { label: 'Open for proposals', tone: 'blue' },
-  [JobStatus.Funded]: { label: 'In progress', tone: 'amber' },
+  [JobStatus.Funded]: { label: 'Funded', tone: 'amber' },
+  [JobStatus.Active]: { label: 'In progress', tone: 'amber' },
   [JobStatus.Delivered]: { label: 'Delivered', tone: 'amber' },
   [JobStatus.Released]: { label: 'Paid', tone: 'green' },
   [JobStatus.Refunded]: { label: 'Refunded', tone: 'grey' },
   [JobStatus.Disputed]: { label: 'In dispute', tone: 'red' },
-  [JobStatus.Resolved]: { label: 'Dispute resolved', tone: 'green' },
+  [JobStatus.Awarded]: { label: 'Awarded to freelancer', tone: 'green' },
   [JobStatus.Cancelled]: { label: 'Cancelled', tone: 'grey' },
 }
+
+/** Platform fee: floor(gross * bps / 10_000), same rounding as the contract. */
+export const feeOf = (gross: bigint, bps: number) => (gross * BigInt(bps)) / 10_000n
 
 export const usd = (raw: bigint) => `$${formatUsdcFixed(raw, 2)}`
 
@@ -124,6 +130,7 @@ export function parseTxError(err: unknown): string {
   if (msg.includes('unauthorized')) return 'This wallet is not allowed to do that.'
   if (msg.includes('invalidstatus')) return 'The project is not in the right state for this action.'
   if (msg.includes('revisionlimitreached')) return 'The revision limit was reached.'
+  if (msg.includes('enforcedpause')) return 'New funding is paused by the platform. Try again later.'
   if (msg.includes('network') || msg.includes('timeout')) return 'Network issue. Check your connection and retry.'
   return e?.shortMessage ?? 'Transaction failed. Please try again.'
 }

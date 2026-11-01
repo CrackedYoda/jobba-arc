@@ -14,6 +14,10 @@ contract. The original Solana code is preserved in git history (see the commit
 | Server builds unsigned transactions, reconciles on-chain | The browser sends transactions directly and reads contract state. |
 | PostgreSQL: projects, proposals, chat, disputes | Contract storage: jobs, proposals, posts (chat, deliveries, evidence) |
 | Admin dispute queue | Arbiter role in the contract, "Disputes" tab in the web app |
+| Config PDA: admin, treasury, fee, pause | Owner, `treasury`, `feeBps` (max 10%), `pause()` on the contract |
+| Funded, Active, Submitted, Released | Funded, Active, Delivered, Released |
+| Funded to Cancelled | `cancelFunded` (full refund before work starts) |
+| Dispute: refund or award | `resolveDispute(jobId, awardFreelancer)`: refund returns the full gross, award uses the normal fee split |
 
 ## What was not carried over
 
@@ -24,6 +28,7 @@ contract. The original Solana code is preserved in git history (see the commit
 
 - 7 day client review window, then the freelancer can claim payment.
 - Client can reclaim the escrow after the delivery deadline.
+- Fee is `floor(gross * feeBps / 10000)`, snapshotted when the escrow is funded. Pause blocks only new funding.
 - Up to 3 revision requests per contract.
 - Disputes that no arbiter rules on within 30 days settle to the pre-dispute outcome.
 - A payout that fails (for example a blocklisted recipient) is credited and withdrawn separately, so it cannot block the other party.

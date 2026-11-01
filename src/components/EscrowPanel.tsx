@@ -5,7 +5,7 @@ import { useAccount, useWriteContract } from 'wagmi'
 import { jobbaAbi } from '@/contracts/jobbaAbi'
 import {
   ARBITER_TIMEOUT_SECONDS, CHAIN_ID, ESCROW_ADDRESS, JobStatus, MAX_REVISIONS, REVIEW_PERIOD_SECONDS,
-  countdown, sameAddr, usd, type Job,
+  countdown, feeOf, sameAddr, usd, type Job,
 } from '@/lib/jobba'
 import { useIsArbiter, useNow, useTx } from '@/hooks/useJobba'
 import { Spinner } from './ui'
@@ -64,13 +64,27 @@ export function EscrowPanel({ job }: { job: Job }) {
   }
   if (s === JobStatus.Cancelled) return null
 
+  const canDisputeFromWork =
+    (s === JobStatus.Funded || s === JobStatus.Active) && (isClient || (isFreelancer && now <= deadline))
+  const canDisputeDelivered = s === JobStatus.Delivered && (isFreelancer || (isClient && now < reviewEnd))
+
   return (
     <Shell job={job} note={noteFor(job, now, deadline, reviewEnd, staleAt)}>
       {s === JobStatus.Funded && isFreelancer && now <= deadline && (
+        <button className="btn-primary w-full" disabled={busy} onClick={() => run('Work started', () => writeContractAsync({ ...base, functionName: 'startWork', args: [job.id] }))}>
+          {busy ? <Spinner label={pending ?? ''} /> : 'Start work'}
+        </button>
+      )}
+      {s === JobStatus.Funded && isClient && (
+        <button className="btn-ghost w-full" disabled={busy} onClick={() => run('Escrow cancelled', () => writeContractAsync({ ...base, functionName: 'cancelFunded', args: [job.id] }))}>
+          Cancel and refund {usd(job.escrowAmount)}
+        </button>
+      )}
+      {s === JobStatus.Active && isFreelancer && now <= deadline && (
         <TextAction label="Submit delivery" placeholder="Link to files, repo, or a summary of what you delivered." cta="Submit delivery" busy={busy}
           onSubmit={(t) => send('Delivery submitted', () => writeContractAsync({ ...base, functionName: 'submitDelivery', args: [job.id, t] }))} />
       )}
-      {s === JobStatus.Funded && isClient && now > deadline && (
+      {(s === JobStatus.Funded || s === JobStatus.Active) && isClient && now > deadline && (
         <button className="btn-primary w-full" disabled={busy} onClick={() => run('Escrow refunded', () => writeContractAsync({ ...base, functionName: 'reclaimAfterDeadline', args: [job.id] }))}>
           Reclaim funds (deadline passed)
         </button>
@@ -91,8 +105,7 @@ export function EscrowPanel({ job }: { job: Job }) {
           Claim payment (review window ended)
         </button>
       )}
-      {((s === JobStatus.Funded && (isClient || (isFreelancer && now <= deadline))) ||
-        (s === JobStatus.Delivered && (isFreelancer || (isClient && now < reviewEnd)))) && (
+      {(canDisputeFromWork || canDisputeDelivered) && (
         <TextAction label="Open a dispute" tone="danger" placeholder="Explain the problem. This becomes public evidence for the arbiter." cta="Open dispute" busy={busy}
           onSubmit={(t) => send('Dispute opened', () => writeContractAsync({ ...base, functionName: 'openDispute', args: [job.id, t] }))} />
       )}
@@ -115,22 +128,25 @@ export function EscrowPanel({ job }: { job: Job }) {
 function noteFor(job: Job, now: number, deadline: number, reviewEnd: number, staleAt: number): string {
   switch (job.status) {
     case JobStatus.Funded:
+      return now <= deadline ? `Funded. The freelancer has ${countdown(deadline)} left to finish, and the client can still cancel for a full refund until work starts.` : 'The delivery deadline has passed.'
+    case JobStatus.Active:
       return now <= deadline ? `Work is due in ${countdown(deadline)}.` : 'The delivery deadline has passed.'
     case JobStatus.Delivered:
       return now < reviewEnd ? `The client has ${countdown(reviewEnd)} to review before the freelancer can claim.` : 'The review window has ended.'
     case JobStatus.Disputed:
       return now < staleAt
-        ? `Waiting for an arbiter. If none rules in ${countdown(staleAt)}, funds follow the pre-dispute state: paid to the freelancer if work was delivered, otherwise refunded to the client.`
+        ? `Waiting for an arbiter. If none rules in ${countdown(staleAt)}, the dispute settles to the pre-dispute state: freelancer paid if work was delivered, otherwise client refunded.`
         : 'No ruling within 30 days. Either party can now settle automatically.'
-    case JobStatus.Released: return 'The freelancer was paid in full.'
+    case JobStatus.Released: return 'The freelancer was paid.'
     case JobStatus.Refunded: return 'The escrow was refunded to the client.'
-    case JobStatus.Resolved: return 'An arbiter or timeout settled the dispute.'
+    case JobStatus.Awarded: return 'A dispute ruling or timeout awarded the payment to the freelancer.'
     default: return ''
   }
 }
 
 function Shell({ job, note, children }: { job: Job; note: string; children?: React.ReactNode }) {
-  const held = job.status === JobStatus.Funded || job.status === JobStatus.Delivered || job.status === JobStatus.Disputed
+  const held = job.status === JobStatus.Funded || job.status === JobStatus.Active || job.status === JobStatus.Delivered || job.status === JobStatus.Disputed
+  const fee = feeOf(job.escrowAmount, job.feeBps)
   return (
     <section className="card space-y-4 p-5">
       <div className="flex items-center gap-2">
@@ -143,6 +159,11 @@ function Shell({ job, note, children }: { job: Job; note: string; children?: Rea
           <TokenUSDC variant="branded" size={26} />
           {usd(job.status === JobStatus.Open ? job.budget : job.escrowAmount).replace('$', '')}
         </p>
+        {job.status !== JobStatus.Open && job.feeBps > 0 && (
+          <p className="tnum mt-2 text-xs text-mute">
+            Platform fee {(job.feeBps / 100).toString()}% ({usd(fee)}) is taken only when the freelancer is paid. Freelancer receives {usd(job.escrowAmount - fee)}.
+          </p>
+        )}
       </div>
       {note && <p className="text-pretty text-sm text-mute">{note}</p>}
       <div className="space-y-2">{children}</div>
@@ -153,23 +174,23 @@ function Shell({ job, note, children }: { job: Job; note: string; children?: Rea
 export function ResolveControl({ job }: { job: Job }) {
   const { writeContractAsync } = useWriteContract()
   const { send, pending } = useTx()
-  const [pct, setPct] = useState(100)
-  const toFreelancer = (job.escrowAmount * BigInt(pct)) / 100n
-  const toClient = job.escrowAmount - toFreelancer
+  const fee = feeOf(job.escrowAmount, job.feeBps)
+  const rule = (award: boolean) =>
+    send(award ? 'Awarded to freelancer' : 'Refunded to client', () =>
+      writeContractAsync({ address: ESCROW_ADDRESS, abi: jobbaAbi, functionName: 'resolveDispute', args: [job.id, award], chainId: CHAIN_ID }),
+    )
   return (
     <div className="card-inner space-y-3 p-4">
       <p className="label !mb-0">Arbiter ruling</p>
-      <input type="range" min={0} max={100} step={5} value={pct} onChange={(e) => setPct(Number(e.target.value))} className="w-full accent-[#1B3158]" aria-label="Share to freelancer" />
-      <div className="tnum flex justify-between text-sm">
-        <span>Freelancer {usd(toFreelancer)}</span>
-        <span>Client {usd(toClient)}</span>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <button className="btn-primary" disabled={!!pending} onClick={() => { void rule(true) }}>
+          {pending ? <Spinner /> : `Pay freelancer ${usd(job.escrowAmount - fee)}`}
+        </button>
+        <button className="btn-ghost" disabled={!!pending} onClick={() => { void rule(false) }}>
+          Refund client {usd(job.escrowAmount)}
+        </button>
       </div>
-      <button className="btn-primary w-full" disabled={!!pending}
-        onClick={() => { void send('Dispute resolved', () => writeContractAsync({
-          address: ESCROW_ADDRESS, abi: jobbaAbi, functionName: 'resolveDispute', args: [job.id, toFreelancer], chainId: CHAIN_ID,
-        })) }}>
-        {pending ? <Spinner label={pending} /> : 'Submit ruling'}
-      </button>
+      <p className="text-xs text-mute">Awards follow the normal fee split. Refunds return the full amount.</p>
     </div>
   )
 }

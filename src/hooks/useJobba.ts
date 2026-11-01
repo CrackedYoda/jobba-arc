@@ -58,6 +58,14 @@ export function usePosts(jobId: bigint) {
   return { posts: (q.data) ?? [], isLoading: q.isLoading }
 }
 
+/** Platform settings: fee in basis points, treasury, and whether new funding is paused. */
+export function usePlatform() {
+  const common = { address: ESCROW_ADDRESS, abi: jobbaAbi, chainId: CHAIN_ID, query: { refetchInterval: 15000 } } as const
+  const fee = useReadContract({ ...common, functionName: 'feeBps' })
+  const paused = useReadContract({ ...common, functionName: 'paused' })
+  return { feeBps: Number(fee.data ?? 0), paused: paused.data === true }
+}
+
 export function useJobsProposedBy(address?: Address) {
   const q = useReadContract({
     address: ESCROW_ADDRESS,

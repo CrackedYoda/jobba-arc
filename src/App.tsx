@@ -1,7 +1,7 @@
 import { useWriteContract, useAccount } from 'wagmi'
 import { jobbaAbi } from '@/contracts/jobbaAbi'
 import { CHAIN_ID, ESCROW_ADDRESS, usd } from '@/lib/jobba'
-import { useClaimable, useTx } from '@/hooks/useJobba'
+import { useClaimable, usePlatform, useTx } from '@/hooks/useJobba'
 import { useRoute } from '@/hooks/useRoute'
 import { Header } from '@/components/Header'
 import { Browse } from '@/components/Browse'
@@ -39,11 +39,17 @@ function ClaimBanner() {
 
 export default function App() {
   const { route, go } = useRoute()
+  const { paused } = usePlatform()
 
   return (
     <div className="min-h-dvh">
       <Header route={route} go={go} />
       <main className="mx-auto max-w-5xl px-4 py-6 pb-24">
+        {paused && (
+          <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            New funding is paused. You can still deliver, release, cancel, dispute and withdraw.
+          </div>
+        )}
         <ClaimBanner />
         {route.jobId !== undefined ? (
           <JobDetail jobId={route.jobId} onBack={() => go({ view: 'browse' })} />

@@ -12,11 +12,13 @@ Wallet-native freelance marketplace on Arc Testnet. Converted from a Solana/Anch
 
 ## Deployed contracts
 
-- JobbaEscrow (Arc Testnet): `0xd16572ab00d44a4b6124f7f86be3eb7b4bb5da66` (address in `.env` as `VITE_JOBBA_ESCROW_ADDRESS`). Constructor: USDC `0x3600...0000`, admin = platform deployer wallet (owner and first arbiter). The admin wallet is not the user's, so arbiter rulings are not available from a user wallet; disputes settle through the 30 day timeout unless redeployed with the user's wallet as admin.
+- JobbaEscrow (Arc Testnet): `0x89888ddfdad10287a9454edc10a7a651bd738f4e` (address in `.env` as `VITE_JOBBA_ESCROW_ADDRESS`). Constructor: USDC `0x3600...0000`, admin = platform deployer wallet (owner and first arbiter), treasury = zero address, feeBps = 0. Fee, treasury, pause and arbiter changes need the owner wallet, which is not the user's; redeploy with the user's wallet as admin and a real treasury to enable them. Previous deployment `0xd165...da66` is retired (old ABI).
 - ABI lives in `src/contracts/jobbaAbi.ts` (generated from the Foundry artifact; regenerate after any contract change).
 
 ## Key rules
 
+- Statuses: Open, Funded, Active, Delivered, Released, Refunded, Disputed, Awarded, Cancelled.
+- Fee snapshotted at funding; refunds are fee-free; pause blocks only `acceptProposal`.
 - Review window 7 days, arbiter timeout 30 days, max 3 revisions.
 - Stale disputes settle to the pre-dispute outcome (delivered: freelancer paid; not delivered: client refunded).
 - Failed payouts (e.g. blocklisted recipient) are credited to `claimable` and withdrawn via `withdraw()`.

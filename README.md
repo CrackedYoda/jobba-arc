@@ -10,8 +10,11 @@ Built with [Arc Studio](https://studio.arc.io)
 - Send proposals with your own price and delivery time.
 - Accept a proposal to fund the escrow in USDC.
 - Chat in the project thread, deliver work, request up to 3 revisions, and release payment.
-- Open a dispute and add evidence. An arbiter splits the escrow between the two parties.
+- Open a dispute and add evidence. An arbiter either pays the freelancer or refunds the client.
+- Freelancers start work, then deliver. Clients can cancel for a full refund until work starts.
 - Get paid automatically if a client does not review within 7 days, or get a refund if the freelancer misses the deadline.
+- An optional platform fee (up to 10%) is taken from the freelancer's payment only. Refunds are always fee-free.
+- The platform can pause new funding without blocking anyone from getting their money out.
 
 ## Repository layout
 

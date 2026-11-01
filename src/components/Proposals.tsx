@@ -3,10 +3,10 @@ import { erc20Abi } from 'viem'
 import { useAccount, useWriteContract } from 'wagmi'
 import { jobbaAbi } from '@/contracts/jobbaAbi'
 import {
-  CHAIN_ID, ESCROW_ADDRESS, JobStatus, USDC_ADDRESS, sameAddr, shortAddr, timeAgo, usd, type Job,
+  CHAIN_ID, ESCROW_ADDRESS, JobStatus, USDC_ADDRESS, feeOf, sameAddr, shortAddr, timeAgo, usd, type Job,
 } from '@/lib/jobba'
 import { parseUsdc } from '@/lib/chain'
-import { useAllowance, useProposals, useTx } from '@/hooks/useJobba'
+import { useAllowance, usePlatform, useProposals, useTx } from '@/hooks/useJobba'
 import { Avatar, Field, Spinner } from './ui'
 
 export function Proposals({ job }: { job: Job }) {
@@ -15,6 +15,7 @@ export function Proposals({ job }: { job: Job }) {
   const { writeContractAsync } = useWriteContract()
   const { send, pending } = useTx()
   const allowance = useAllowance(address)
+  const { feeBps, paused } = usePlatform()
 
   const isClient = sameAddr(address, job.client)
   const isOpen = job.status === JobStatus.Open
@@ -73,14 +74,17 @@ export function Proposals({ job }: { job: Job }) {
             <div className="text-right">
               <p className="tnum font-display text-xl font-bold tracking-tight">{usd(p.amount)}</p>
               <p className="text-xs text-mute">{p.durationDays} {p.durationDays === 1 ? 'day' : 'days'}</p>
+              {feeBps > 0 && (
+                <p className="tnum text-xs text-mute">Freelancer receives {usd(p.amount - feeOf(p.amount, feeBps))} after {(feeBps / 100).toString()}% fee</p>
+              )}
             </div>
           </div>
           <p className="mt-4 whitespace-pre-wrap text-pretty text-sm">{p.coverLetter}</p>
           {isOpen && (isClient || sameAddr(p.freelancer, address)) && (
             <div className="mt-4 flex flex-wrap gap-2">
               {isClient && (
-                <button className="btn-primary" disabled={!!pending} onClick={() => void accept(i)}>
-                  {pending ? <Spinner label={pending} /> : `Accept and fund ${usd(p.amount)}`}
+                <button className="btn-primary" disabled={!!pending || paused} onClick={() => void accept(i)}>
+                  {pending ? <Spinner label={pending} /> : paused ? 'Funding paused' : `Accept and fund ${usd(p.amount)}`}
                 </button>
               )}
               {sameAddr(p.freelancer, address) && (

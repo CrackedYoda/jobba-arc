@@ -22,7 +22,7 @@ export function MyWork({ onOpen, onPost }: { onOpen: (id: bigint) => void; onPos
   const proposed = jobs.filter((j) => proposedIds.some((id) => id === j.id) && !sameAddr(j.freelancer, address))
   const lists: Record<Tab, typeof jobs> = { client: asClient, freelancer: asFreelancer, proposals: proposed }
   const list = lists[tab]
-  const ACTIVE = new Set<number>([JobStatus.Funded, JobStatus.Delivered, JobStatus.Disputed])
+  const ACTIVE = new Set<number>([JobStatus.Funded, JobStatus.Active, JobStatus.Delivered, JobStatus.Disputed])
   const active = (j: (typeof jobs)[number]) => ACTIVE.has(j.status)
 
   const tabs: { id: Tab; label: string }[] = [

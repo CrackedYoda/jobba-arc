@@ -10,12 +10,12 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 /// @title Jobba Freelance fixed-price marketplace and USDC escrow
 /// @notice Stores marketplace content onchain; all text is public, permanent, and measured in bytes.
 /// @dev Intended for Arc Testnet USDC (six decimals), supplied to the constructor, not hardcoded.
-///      Built for the project's Solidity 0.8.28 / Cancun configuration. No fees or fund rescue powers.
+///      Fees are snapshotted at funding; only new funding can be paused. No fund rescue powers.
 ///      The token must be standard, non-rebasing USDC: a failed transfer must not move funds.
 contract JobbaEscrow is Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    enum JobStatus { Open, Funded, Delivered, Released, Refunded, Disputed, Resolved, Cancelled }
+    enum JobStatus { Open, Funded, Active, Delivered, Released, Refunded, Disputed, Awarded, Cancelled }
     enum PostKind { Chat, Deliverable, Evidence, Revision }
 
     struct Job {
@@ -30,6 +30,7 @@ contract JobbaEscrow is Ownable2Step, ReentrancyGuard {
         uint64 disputedAt;
         uint32 durationDays;
         uint8 revisions;
+        uint16 feeBps;
         JobStatus status;
         string title;
         string category;
@@ -56,9 +57,13 @@ contract JobbaEscrow is Ownable2Step, ReentrancyGuard {
     /// @notice Time before either party may settle a dispute according to its pre-dispute delivery status.
     uint256 public constant ARBITER_TIMEOUT = 30 days;
     uint8 public constant MAX_REVISIONS = 3;
+    uint16 public constant MAX_FEE_BPS = 1000;
 
     IERC20 public immutable usdc;
     uint256 public jobCount;
+    uint16 public feeBps;
+    address public treasury;
+    bool public paused;
     mapping(address => bool) public isArbiter;
     mapping(address => uint256) public claimable;
 
@@ -91,28 +96,43 @@ contract JobbaEscrow is Ownable2Step, ReentrancyGuard {
     error ArbiterTimeoutNotReached();
     error ConflictedArbiter();
     error NothingToWithdraw();
+    error FeeTooHigh();
+    error TreasuryRequired();
+    error ContractPaused();
+    error ContractNotPaused();
 
     event JobPosted(uint256 indexed id, address indexed client, uint256 budget);
     event JobCancelled(uint256 indexed id);
     event ProposalSubmitted(uint256 indexed jobId, uint256 index, address indexed freelancer, uint256 amount, uint32 durationDays);
     event ProposalWithdrawn(uint256 indexed jobId, uint256 index);
     event ProposalAccepted(uint256 indexed jobId, uint256 index, address indexed freelancer, uint256 amount, uint64 deadline);
+    event WorkStarted(uint256 indexed jobId);
     event DeliverySubmitted(uint256 indexed jobId);
     event RevisionRequested(uint256 indexed jobId, uint8 revisions);
-    event Released(uint256 indexed jobId, address indexed freelancer, uint256 amount);
+    event Released(uint256 indexed jobId, address indexed freelancer, uint256 freelancerAmount, uint256 feeAmount);
     event Refunded(uint256 indexed jobId, address indexed client, uint256 amount);
     event DisputeOpened(uint256 indexed jobId, address indexed openedBy);
-    event DisputeResolved(uint256 indexed jobId, uint256 freelancerAmount, uint256 clientAmount, address resolver);
+    event DisputeResolved(uint256 indexed jobId, bool awardedFreelancer, uint256 freelancerAmount, uint256 clientAmount, uint256 feeAmount, address resolver);
     event PostAdded(uint256 indexed jobId, address indexed author, PostKind kind);
     event PayoutDeferred(address indexed to, uint256 amount);
     event Withdrawn(address indexed to, uint256 amount);
     event ArbiterSet(address indexed arbiter, bool allowed);
+    event FeeUpdated(uint16 feeBps);
+    event TreasuryUpdated(address treasury);
+    event Paused(address account);
+    event Unpaused(address account);
 
     /// @param usdc_ USDC ERC-20 address; amounts throughout are raw six-decimal units.
     /// @param admin_ Initial two-step owner and initial arbiter.
-    constructor(address usdc_, address admin_) Ownable(admin_) {
+    /// @param treasury_ Fee recipient; may be zero only when the initial fee is zero.
+    /// @param feeBps_ Initial fee in basis points, at most MAX_FEE_BPS.
+    constructor(address usdc_, address admin_, address treasury_, uint16 feeBps_) Ownable(admin_) {
         if (usdc_ == address(0) || admin_ == address(0)) revert ZeroAddress();
+        if (feeBps_ > MAX_FEE_BPS) revert FeeTooHigh();
+        if (feeBps_ > 0 && treasury_ == address(0)) revert TreasuryRequired();
         usdc = IERC20(usdc_);
+        treasury = treasury_;
+        feeBps = feeBps_;
         isArbiter[admin_] = true;
         emit ArbiterSet(admin_, true);
     }
@@ -122,6 +142,36 @@ contract JobbaEscrow is Ownable2Step, ReentrancyGuard {
         if (arbiter == address(0)) revert ZeroAddress();
         isArbiter[arbiter] = allowed;
         emit ArbiterSet(arbiter, allowed);
+    }
+
+    /// @notice Set the fee for future funding only; existing jobs retain their snapshotted rate.
+    function setFeeBps(uint16 feeBps_) external onlyOwner {
+        if (feeBps_ > MAX_FEE_BPS) revert FeeTooHigh();
+        if (feeBps_ > 0 && treasury == address(0)) revert TreasuryRequired();
+        feeBps = feeBps_;
+        emit FeeUpdated(feeBps_);
+    }
+
+    /// @notice Set the recipient of future fee payouts, including fees from already-funded jobs.
+    /// @dev Previously deferred fees remain claimable by their original recipient.
+    function setTreasury(address treasury_) external onlyOwner {
+        if (treasury_ == address(0)) revert ZeroAddress();
+        treasury = treasury_;
+        emit TreasuryUpdated(treasury_);
+    }
+
+    /// @notice Pause new funding only; all other marketplace and escrow operations remain available.
+    function pause() external onlyOwner {
+        if (paused) revert ContractPaused();
+        paused = true;
+        emit Paused(msg.sender);
+    }
+
+    /// @notice Resume new funding.
+    function unpause() external onlyOwner {
+        if (!paused) revert ContractNotPaused();
+        paused = false;
+        emit Unpaused(msg.sender);
     }
 
     /// @notice Publish a project without transferring tokens. IDs start at one.
@@ -152,6 +202,17 @@ contract JobbaEscrow is Ownable2Step, ReentrancyGuard {
         _requireStatus(job, JobStatus.Open);
         job.status = JobStatus.Cancelled;
         emit JobCancelled(jobId);
+    }
+
+    /// @notice Cancel funded work before it starts and refund or credit the full gross price without a fee.
+    function cancelFunded(uint256 jobId) external nonReentrant {
+        Job storage job = _job(jobId);
+        _onlyClient(job);
+        _requireStatus(job, JobStatus.Funded);
+        job.status = JobStatus.Cancelled;
+        emit JobCancelled(jobId);
+        emit Refunded(jobId, job.client, job.escrowAmount);
+        _payout(job.client, job.escrowAmount);
     }
 
     /// @notice Append an immutable offer; withdraw first to submit a replacement.
@@ -192,10 +253,12 @@ contract JobbaEscrow is Ownable2Step, ReentrancyGuard {
         emit ProposalWithdrawn(jobId, index);
     }
 
-    /// @notice Accept exact offer terms and escrow the entire agreed price using prior USDC approval.
+    /// @notice Accept exact offer terms and escrow the entire gross price using prior USDC approval.
+    /// @dev Snapshots the current fee rate. This is the only operation blocked while paused.
     function acceptProposal(uint256 jobId, uint256 index, uint256 expectedAmount, uint32 expectedDurationDays)
         external nonReentrant
     {
+        if (paused) revert ContractPaused();
         Job storage job = _job(jobId);
         _onlyClient(job);
         _requireStatus(job, JobStatus.Open);
@@ -207,6 +270,7 @@ contract JobbaEscrow is Ownable2Step, ReentrancyGuard {
         job.freelancer = proposal.freelancer;
         job.escrowAmount = proposal.amount;
         job.durationDays = proposal.durationDays;
+        job.feeBps = feeBps;
         job.deadline = uint64(block.timestamp + uint256(proposal.durationDays) * 1 days);
         job.status = JobStatus.Funded;
         uint256 beforeBalance = usdc.balanceOf(address(this));
@@ -218,11 +282,21 @@ contract JobbaEscrow is Ownable2Step, ReentrancyGuard {
         emit ProposalAccepted(jobId, index, proposal.freelancer, proposal.amount, job.deadline);
     }
 
-    /// @notice Record delivery and start a fresh seven-day review window.
-    function submitDelivery(uint256 jobId, string calldata note) external {
+    /// @notice Start funded work no later than its deadline; only the selected freelancer may start.
+    function startWork(uint256 jobId) external {
         Job storage job = _job(jobId);
         _onlyFreelancer(job);
         _requireStatus(job, JobStatus.Funded);
+        if (block.timestamp > job.deadline) revert DeadlinePassed();
+        job.status = JobStatus.Active;
+        emit WorkStarted(jobId);
+    }
+
+    /// @notice Record active work's delivery by its deadline and start a fresh seven-day review window.
+    function submitDelivery(uint256 jobId, string calldata note) external {
+        Job storage job = _job(jobId);
+        _onlyFreelancer(job);
+        _requireStatus(job, JobStatus.Active);
         if (block.timestamp > job.deadline) revert DeadlinePassed();
         _validateText(note, 2000);
         job.deliveredAt = uint64(block.timestamp);
@@ -232,6 +306,7 @@ contract JobbaEscrow is Ownable2Step, ReentrancyGuard {
     }
 
     /// @notice Request up to three revisions strictly before the review window expires.
+    /// @dev Returns work to Active and extends its deadline to at least three days from now.
     function requestRevision(uint256 jobId, string calldata reason) external {
         Job storage job = _job(jobId);
         _onlyClient(job);
@@ -240,14 +315,14 @@ contract JobbaEscrow is Ownable2Step, ReentrancyGuard {
         if (block.timestamp >= uint256(job.deliveredAt) + REVIEW_PERIOD) revert ReviewWindowExpired();
         _validateText(reason, 2000);
         ++job.revisions;
-        job.status = JobStatus.Funded;
+        job.status = JobStatus.Active;
         uint64 extendedDeadline = uint64(block.timestamp + 3 days);
         if (job.deadline < extendedDeadline) job.deadline = extendedDeadline;
         _addPost(jobId, PostKind.Revision, reason);
         emit RevisionRequested(jobId, job.revisions);
     }
 
-    /// @notice Approve delivered work and release or credit its full price to the freelancer.
+    /// @notice Approve delivered work and pay or credit the freelancer net of the snapshotted fee.
     function approveAndRelease(uint256 jobId) external nonReentrant {
         Job storage job = _job(jobId);
         _onlyClient(job);
@@ -255,7 +330,7 @@ contract JobbaEscrow is Ownable2Step, ReentrancyGuard {
         _release(job);
     }
 
-    /// @notice Claim delivered work's price once the client has had seven days to review it.
+    /// @notice Claim delivered work's net price once the client has had seven days to review it.
     function claimAfterReviewWindow(uint256 jobId) external nonReentrant {
         Job storage job = _job(jobId);
         _onlyFreelancer(job);
@@ -264,25 +339,28 @@ contract JobbaEscrow is Ownable2Step, ReentrancyGuard {
         _release(job);
     }
 
-    /// @notice Refund an undelivered job strictly after its current deadline.
+    /// @notice Refund an undelivered Funded or Active job's full gross price strictly after its deadline.
     function reclaimAfterDeadline(uint256 jobId) external nonReentrant {
         Job storage job = _job(jobId);
         _onlyClient(job);
-        _requireStatus(job, JobStatus.Funded);
+        if (job.status != JobStatus.Funded && job.status != JobStatus.Active) revert InvalidStatus();
         if (block.timestamp <= job.deadline) revert DeadlineNotPassed();
         job.status = JobStatus.Refunded;
         emit Refunded(jobId, job.client, job.escrowAmount);
         _payout(job.client, job.escrowAmount);
     }
 
-    /// @notice Freeze escrow for arbitration and store the opening reason as public evidence.
+    /// @notice Freeze Funded, Active, or Delivered escrow and store the opening reason as public evidence.
+    /// @dev Clients cannot dispute after a delivered job's review window; freelancers cannot dispute
+    ///      undelivered work after its deadline. Records the immediate pre-dispute state for stale resolution.
     function openDispute(uint256 jobId, string calldata reason) external {
         Job storage job = _job(jobId);
         _onlyParty(job);
-        if (job.status != JobStatus.Funded && job.status != JobStatus.Delivered) revert InvalidStatus();
+        if (job.status != JobStatus.Funded && job.status != JobStatus.Active
+            && job.status != JobStatus.Delivered) revert InvalidStatus();
         if (msg.sender == job.client && job.status == JobStatus.Delivered
             && block.timestamp >= uint256(job.deliveredAt) + REVIEW_PERIOD) revert ReviewWindowExpired();
-        if (msg.sender == job.freelancer && job.status == JobStatus.Funded
+        if (msg.sender == job.freelancer && (job.status == JobStatus.Funded || job.status == JobStatus.Active)
             && block.timestamp > job.deadline) revert DeadlinePassed();
         _validateText(reason, 2000);
         _disputedAfterDelivery[jobId] = job.status == JobStatus.Delivered;
@@ -301,31 +379,31 @@ contract JobbaEscrow is Ownable2Step, ReentrancyGuard {
         _addPost(jobId, PostKind.Evidence, body);
     }
 
-    /// @notice An authorized, non-party arbiter allocates escrow between the two parties only.
-    function resolveDispute(uint256 jobId, uint256 freelancerAmount) external nonReentrant {
+    /// @notice An authorized, non-party arbiter awards work net of fees or refunds the full gross price.
+    function resolveDispute(uint256 jobId, bool awardFreelancer) external nonReentrant {
         Job storage job = _job(jobId);
         if (!isArbiter[msg.sender]) revert Unauthorized();
         if (msg.sender == job.client || msg.sender == job.freelancer) revert ConflictedArbiter();
         _requireStatus(job, JobStatus.Disputed);
-        if (freelancerAmount > job.escrowAmount) revert InvalidAmount();
-        _resolve(job, freelancerAmount);
+        _resolve(job, awardFreelancer);
     }
 
     /// @notice After ARBITER_TIMEOUT either party may settle according to the pre-dispute delivery status.
-    /// @dev Full escrow goes to the freelancer if disputed after delivery; otherwise it is refunded to the client.
+    /// @dev Disputed after delivery awards the freelancer net of fees; otherwise refunds the full gross price.
     function resolveStaleDispute(uint256 jobId) external nonReentrant {
         Job storage job = _job(jobId);
         _onlyParty(job);
         _requireStatus(job, JobStatus.Disputed);
         if (block.timestamp < uint256(job.disputedAt) + ARBITER_TIMEOUT) revert ArbiterTimeoutNotReached();
-        _resolve(job, _disputedAfterDelivery[jobId] ? job.escrowAmount : 0);
+        _resolve(job, _disputedAfterDelivery[jobId]);
     }
 
-    /// @notice Parties can chat after funding, including after settlement; arbiters can chat during disputes.
+    /// @notice Parties can chat after funding, including after settlement or funded cancellation;
+    ///         arbiters can chat during disputes. Unfunded cancellations cannot receive messages.
     function postMessage(uint256 jobId, string calldata body) external {
         Job storage job = _job(jobId);
         if (job.freelancer == address(0)) revert InvalidStatus();
-        if (job.status == JobStatus.Open || job.status == JobStatus.Cancelled) revert InvalidStatus();
+        if (job.status == JobStatus.Open) revert InvalidStatus();
         bool party = msg.sender == job.client || msg.sender == job.freelancer;
         if (!party && !(isArbiter[msg.sender] && job.status == JobStatus.Disputed)) revert Unauthorized();
         _validateText(body, 2000);
@@ -426,18 +504,31 @@ contract JobbaEscrow is Ownable2Step, ReentrancyGuard {
         emit PostAdded(jobId, msg.sender, kind);
     }
 
-    function _release(Job storage job) internal {
-        job.status = JobStatus.Released;
-        emit Released(job.id, job.freelancer, job.escrowAmount);
-        _payout(job.freelancer, job.escrowAmount);
+    /// @dev Checked multiplication followed by division rounds fees down to whole token units.
+    function _feeFor(uint256 gross, uint16 bps_) internal pure returns (uint256) {
+        return gross * uint256(bps_) / 10_000;
     }
 
-    function _resolve(Job storage job, uint256 freelancerAmount) internal {
-        uint256 clientAmount = job.escrowAmount - freelancerAmount;
-        job.status = JobStatus.Resolved;
-        emit DisputeResolved(job.id, freelancerAmount, clientAmount, msg.sender);
+    function _release(Job storage job) internal {
+        uint256 feeAmount = _feeFor(job.escrowAmount, job.feeBps);
+        uint256 freelancerAmount = job.escrowAmount - feeAmount;
+        address feeRecipient = treasury;
+        job.status = JobStatus.Released;
+        emit Released(job.id, job.freelancer, freelancerAmount, feeAmount);
+        _payout(job.freelancer, freelancerAmount);
+        _payout(feeRecipient, feeAmount);
+    }
+
+    function _resolve(Job storage job, bool awardFreelancer) internal {
+        uint256 feeAmount = awardFreelancer ? _feeFor(job.escrowAmount, job.feeBps) : 0;
+        uint256 freelancerAmount = awardFreelancer ? job.escrowAmount - feeAmount : 0;
+        uint256 clientAmount = awardFreelancer ? 0 : job.escrowAmount;
+        address feeRecipient = treasury;
+        job.status = awardFreelancer ? JobStatus.Awarded : JobStatus.Refunded;
+        emit DisputeResolved(job.id, awardFreelancer, freelancerAmount, clientAmount, feeAmount, msg.sender);
         _payout(job.freelancer, freelancerAmount);
         _payout(job.client, clientAmount);
+        _payout(feeRecipient, feeAmount);
     }
 
     /// @dev Settlement-only transfer wrapper. Final status is set before calling; escrowAmount stays historical.

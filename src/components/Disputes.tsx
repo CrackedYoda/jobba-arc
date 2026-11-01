@@ -50,7 +50,7 @@ export function Disputes({ onOpen }: { onOpen: (id: bigint) => void }) {
         <h1 className="font-display text-3xl font-bold tracking-[-0.03em]">Disputes</h1>
         <p className="mt-2 max-w-xl text-pretty text-mute">
           {isArbiter
-            ? 'Review the evidence and split the escrow between the two parties.'
+            ? 'Review the evidence, then pay the freelancer or refund the client.'
             : 'Open disputes are ruled on by an arbiter. If none rules within 30 days, either party can settle automatically.'}
         </p>
       </div>
