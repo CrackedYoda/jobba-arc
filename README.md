@@ -41,7 +41,8 @@ bun run dev
 Other commands:
 
 ```bash
-bun run check            # lint and typecheck
+bun run lint
+bun run typecheck
 bun run contracts:build  # compile the escrow contract
 bun run contracts:test   # run contract tests
 ```

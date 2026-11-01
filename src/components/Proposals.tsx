@@ -5,7 +5,7 @@ import { jobbaAbi } from '@/contracts/jobbaAbi'
 import {
   CHAIN_ID, ESCROW_ADDRESS, JobStatus, USDC_ADDRESS, sameAddr, shortAddr, timeAgo, usd, type Job,
 } from '@/lib/jobba'
-import { parseUsdc } from '@/onchain-money'
+import { parseUsdc } from '@/lib/chain'
 import { useAllowance, useProposals, useTx } from '@/hooks/useJobba'
 import { Avatar, Field, Spinner } from './ui'
 

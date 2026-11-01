@@ -1,7 +1,7 @@
 import { ArrowUpRight } from 'lucide-react'
 import { TokenUSDC } from '@web3icons/react'
-import { formatUnitsFixed } from '@/onchain-money'
-import { USDC_DECIMALS_ON_CHAIN, shortAddr, timeAgo, type Job } from '@/lib/jobba'
+import { formatUsdcFixed } from '@/lib/chain'
+import { shortAddr, timeAgo, type Job } from '@/lib/jobba'
 import { Avatar, Chip, StatusBadge } from './ui'
 
 export function JobCard({ job, onOpen }: { job: Job; onOpen: () => void }) {
@@ -26,7 +26,7 @@ export function JobCard({ job, onOpen }: { job: Job; onOpen: () => void }) {
         <div className="text-right">
           <p className="tnum inline-flex items-center gap-1 font-display text-xl font-bold tracking-tight">
             <TokenUSDC variant="branded" size={18} />
-            {formatUnitsFixed(job.budget, USDC_DECIMALS_ON_CHAIN, 2)}
+            {formatUsdcFixed(job.budget, 2)}
           </p>
           <Chip>{job.category}</Chip>
         </div>

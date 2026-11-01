@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { erc20Abi, type Address, type Hash } from 'viem'
 import { toast } from 'sonner'
 import { useAccount, usePublicClient, useReadContract, useSwitchChain } from 'wagmi'
-import { buildTxExplorerUrl } from '@/onchain-facts'
+import { txUrl } from '@/lib/chain'
 import { jobbaAbi } from '@/contracts/jobbaAbi'
 import { CHAIN_ID, ESCROW_ADDRESS, USDC_ADDRESS, parseTxError, type Job, type Post, type Proposal } from '@/lib/jobba'
 
@@ -141,7 +141,7 @@ export function useTx() {
         const receipt = await publicClient?.waitForTransactionReceipt({ hash })
         if (receipt && receipt.status !== 'success') throw new Error('Transaction reverted')
         toast.success(`${label} confirmed`, {
-          action: { label: 'View', onClick: () => window.open(buildTxExplorerUrl(CHAIN_ID, hash), '_blank', 'noopener') },
+          action: { label: 'View', onClick: () => window.open(txUrl(hash), '_blank', 'noopener') },
         })
         await qc.invalidateQueries()
         return true

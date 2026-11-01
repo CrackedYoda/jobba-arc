@@ -1,7 +1,7 @@
 import { ArrowLeft, ExternalLink } from 'lucide-react'
 import { useAccount } from 'wagmi'
-import { buildAddressExplorerUrl } from '@/onchain-facts'
-import { CHAIN_ID, JobStatus, isZero, sameAddr, shortAddr, timeAgo, usd } from '@/lib/jobba'
+import { addressUrl } from '@/lib/chain'
+import { JobStatus, isZero, sameAddr, shortAddr, timeAgo, usd } from '@/lib/jobba'
 import { useJob } from '@/hooks/useJobba'
 import { Avatar, Chip, Empty, Spinner, StatusBadge } from './ui'
 import { Proposals } from './Proposals'
@@ -40,7 +40,7 @@ export function JobDetail({ jobId, onBack }: { jobId: bigint; onBack: () => void
               <div>
                 <dt className="label">Client</dt>
                 <dd className="flex items-center gap-2"><Avatar address={job.client} />
-                  <a className="tnum inline-flex items-center gap-1 text-sm font-medium hover:underline" href={buildAddressExplorerUrl(CHAIN_ID, job.client)} target="_blank" rel="noopener noreferrer">
+                  <a className="tnum inline-flex items-center gap-1 text-sm font-medium hover:underline" href={addressUrl(job.client)} target="_blank" rel="noopener noreferrer">
                     {shortAddr(job.client)}<ExternalLink className="h-3 w-3" />
                   </a>
                 </dd>

@@ -2,8 +2,8 @@ import { ConnectKitButton } from 'connectkit'
 import { Briefcase, Gavel, LayoutList, PlusCircle } from 'lucide-react'
 import { TokenUSDC } from '@web3icons/react'
 import { useAccount } from 'wagmi'
-import { formatUnitsFixed } from '@/onchain-money'
-import { USDC_DECIMALS_ON_CHAIN, shortAddr } from '@/lib/jobba'
+import { formatUsdcFixed } from '@/lib/chain'
+import { shortAddr } from '@/lib/jobba'
 import { useUsdcBalance } from '@/hooks/useJobba'
 import type { Route, View } from '@/hooks/useRoute'
 
@@ -47,7 +47,7 @@ export function Header({ route, go }: { route: Route; go: (r: Route) => void }) 
           {address && balance !== undefined && (
             <span className="tnum hidden items-center gap-1.5 rounded-full border border-line bg-white/70 px-3 py-2 text-sm font-semibold sm:inline-flex">
               <TokenUSDC variant="branded" size={16} />
-              {formatUnitsFixed(balance, USDC_DECIMALS_ON_CHAIN, 2)}
+              {formatUsdcFixed(balance, 2)}
             </span>
           )}
           <ConnectKitButton.Custom>

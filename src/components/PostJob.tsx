@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useAccount, useWriteContract } from 'wagmi'
 import { jobbaAbi } from '@/contracts/jobbaAbi'
 import { CATEGORIES, CHAIN_ID, ESCROW_ADDRESS } from '@/lib/jobba'
-import { parseUsdc } from '@/onchain-money'
+import { parseUsdc } from '@/lib/chain'
 import { useTx } from '@/hooks/useJobba'
 import { Field, Spinner } from './ui'
 
