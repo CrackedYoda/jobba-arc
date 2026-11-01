@@ -12,7 +12,7 @@ Wallet-native freelance marketplace on Arc Testnet. Converted from a Solana/Anch
 
 ## Deployed contracts
 
-- JobbaEscrow (Arc Testnet): `0x89888ddfdad10287a9454edc10a7a651bd738f4e` (address in `.env` as `VITE_JOBBA_ESCROW_ADDRESS`). Constructor: USDC `0x3600...0000`, admin = platform deployer wallet (owner and first arbiter), treasury = zero address, feeBps = 0. Fee, treasury, pause and arbiter changes need the owner wallet, which is not the user's; redeploy with the user's wallet as admin and a real treasury to enable them. Previous deployment `0xd165...da66` is retired (old ABI).
+- JobbaEscrow (Arc Testnet): `0x58c201db3e88e3e03dea45b9ae19031f9ead4903` (address in `.env` as `VITE_JOBBA_ESCROW_ADDRESS`). Constructor: USDC `0x3600...0000`, owner and first arbiter `0x5465a7e736ABa2daA99640CA35b54AE8c894111E`, treasury `0xC8156C5187E8f8Ee0dF9Eca32a2782C0d5bB52e3`, feeBps 250 (2.5%, max 1000). Owner can call setFeeBps, setTreasury, setArbiter, pause, unpause (no admin UI yet). Earlier deployments (`0xd165...da66`, `0x8988...8f4e`) are retired.
 - ABI lives in `src/contracts/jobbaAbi.ts` (generated from the Foundry artifact; regenerate after any contract change).
 
 ## Key rules

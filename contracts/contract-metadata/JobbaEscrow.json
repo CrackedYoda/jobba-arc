@@ -1,13 +1,20 @@
 {
-  "contractAddress": "0x89888ddfdad10287a9454edc10a7a651bd738f4e",
+  "contractAddress": "0x58c201db3e88e3e03dea45b9ae19031f9ead4903",
   "network": "ARC-TESTNET",
   "deployerWalletId": "3c2464b2-8369-52e2-a782-800bbeca5396",
   "contract_code_path": "/home/user/app/contracts/JobbaEscrow.sol",
   "contract_compiled_code_path": "/home/user/app/contracts/out/JobbaEscrow.sol/JobbaEscrow.json",
   "contract_network_and_links": {
-    "Arc Testnet": "https://explorer.testnet.arc.io/address/0x89888ddfdad10287a9454edc10a7a651bd738f4e"
+    "Arc Testnet": "https://explorer.testnet.arc.io/address/0x58c201db3e88e3e03dea45b9ae19031f9ead4903"
   },
   "contract_deployments": [
+    {
+      "chain": "Arc Testnet",
+      "address": "0x58c201db3e88e3e03dea45b9ae19031f9ead4903",
+      "explorerUrl": "https://explorer.testnet.arc.io/address/0x58c201db3e88e3e03dea45b9ae19031f9ead4903",
+      "txHash": "0xa9a5ae0776f3b4fe8ca16f015c3f8d08fc98a35ab1fd3b2de5e9f2d6504e08ef",
+      "deployedAt": "2026-11-01T17:24:32.696Z"
+    },
     {
       "chain": "Arc Testnet",
       "address": "0x89888ddfdad10287a9454edc10a7a651bd738f4e",
