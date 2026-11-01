@@ -1,0 +1,45 @@
+{
+  "name": "jobba-freelance-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "node scripts/prepare-typecheck.mjs && tsc --noEmit",
+    "env:check": "node scripts/check-env.mjs shell",
+    "env:check:wallet": "node scripts/check-env.mjs wallet",
+    "env:check:server": "node scripts/check-env.mjs server",
+    "env:check:deploy": "node scripts/check-env.mjs deploy",
+    "test": "vitest run",
+    "verify": "npm run env:check && npm run lint && npm run typecheck && npm test && npm run build",
+    "verify:deploy": "npm run env:check:deploy && npm run verify",
+    "test:db": "vitest run -c vitest.integration.config.mts"
+  },
+  "dependencies": {
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@reown/appkit": "^1.8.24",
+    "@reown/appkit-adapter-solana": "^1.8.24",
+    "@solana/web3.js": "^1.99.0",
+    "bs58": "^6.0.0",
+    "next": "16.4.2",
+    "pg": "^8.23.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tweetnacl": "^1.0.3",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "16.4.2",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5"
+  }
+}
