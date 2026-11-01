@@ -1,0 +1,24 @@
+# dependencies and build output
+node_modules/
+dist/
+lib/
+contracts/out/
+contracts/cache/
+cache/
+out/
+
+# secrets and local state
+.env
+.env.*
+!.env.example
+.circle/
+recovery_file*
+
+# Arc Studio runtime logs
+traces.jsonl
+console.jsonl
+
+# misc
+.DS_Store
+*.tsbuildinfo
+.agents/
