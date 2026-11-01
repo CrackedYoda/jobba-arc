@@ -21,6 +21,7 @@ Built with [Arc Studio](https://studio.arc.io)
 One monorepo holds the whole product:
 
 - `src/`: the web app (React, Vite, wagmi).
+- `admin/`: the admin console, a separate page served at `/admin/`. It shows platform stats, and lets the contract owner change the fee and treasury, pause funding, manage arbiters and transfer ownership. Arbiters rule on disputes there.
 - `contracts/`: the Solidity escrow contract and Foundry config. `contracts/contract-metadata/` records the Arc Testnet deployment.
 - `scripts/`: deploy helpers.
 - `docs/MIGRATION.md`: how the original Solana, Next.js and Postgres version maps to this one.

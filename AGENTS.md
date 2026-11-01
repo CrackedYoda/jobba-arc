@@ -58,4 +58,6 @@ bun run dev
 
 ## Repository
 
+Admin console lives in `admin/` (own HTML entry at `/admin/`, reuses `src/` code through the `@` alias). Owner-only controls: fee, treasury, pause, arbiters, ownership transfer.
+
 Monorepo: web app in `src/`, Solidity in `contracts/`, notes in `docs/`. The Solana/Next.js/Postgres implementation was removed and lives only in git history (see `docs/MIGRATION.md`). Local git identity is set per-repo.
